@@ -81,9 +81,12 @@ play_dice_v2(5)
 #' @examples
 play_dice_v3 <- function(n){
   dice <- sample(1:6, n, replace = TRUE)
+  # Create a table by names: dice name; value: dice number
   table <- table(dice)
   name <- names(table)
+  # if dice number == 2 or 4 or 6, dice is assigned as dice, otherwise, as 0
   table <- ifelse(as.numeric(name) %% 2 == 0, table*as.numeric(name), 0)
+  # summation the cost
   c <- -2*n + sum(table)
   return(c)
 }
@@ -105,9 +108,11 @@ play_dice_v3(5)
 #' @examples
 play_dice_v4 <- function(n){
   dice <- sample(1:6, n, replace = TRUE)
+  # use `sapply` to implement dice number if it is 2 or 4 or 6, otherwise, 0
   dice_v4 <- sapply(dice, set_value <- function(dice){
     ifelse(dice %% 2 == 0, dice, 0)
   })
+  # summation the cost
   c <- -2*n + sum(dice_v4)
   return(c)
 }

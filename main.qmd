@@ -1,0 +1,1733 @@
+---
+title: "Assignment 2"
+author: "Manning Wu"
+format: pdf
+---
+## Set up
+
+```{r}
+#| warning: false
+library(tidyverse)
+library(microbenchmark)
+library(interactions)
+library(sandwich)
+```
+## Q1
+
+### (a)
+
+#### Version 1
+```{r}
+#' Title: the v1 function for dice game
+#'
+#' @param n - the number of dice to roll
+#'
+#' @return total winnings or loses
+#' @export
+#'
+#' @examples
+play_dice_v1 <- function(n){
+  c <- -2*n
+  # roll dice for n times
+  for (i in 1:n){
+    # randomly pick a dice from 1~6
+    dice <- sample(1:6, 1, replace = TRUE)
+    # if dice == 2 or 4 or 6, add corresponding scores
+    if (dice == 2 | dice == 4 | dice == 6){
+      # c - current cost
+      c <- c + dice
+    }
+  }
+  return(c)
+}
+
+# example for 10 dice
+play_dice_v1(10)
+```
+
+#### Version 2
+
+```{r}
+#' Title: the v2 function for dice game
+#'
+#' @param n - the number of dice to roll
+#'
+#' @return total winnings or loses
+#' @export
+#'
+#' @examples
+play_dice_v2 <- function(n){
+  # randomly pick a dice from 1~6
+  dice <- sample(1:6, n, replace = TRUE)
+  # if dice == 2 or 4 or 6, add corresponding scores
+  dice <- ifelse(dice %% 2 == 0, dice, 0)
+  c <- -2*n + sum(dice)
+  return(c)
+}
+
+# example for 5 dice
+play_dice_v2(5)
+```
+
+#### Version 3
+```{r}
+#' Title: the v3 function for dice game
+#'
+#' @param n - the number of dice to roll
+#'
+#' @return total winnings or loses
+#' @export
+#'
+#' @examples
+play_dice_v3 <- function(n){
+  dice <- sample(1:6, n, replace = TRUE)
+  table <- table(dice)
+  name <- names(table)
+  table <- ifelse(as.numeric(name) %% 2 == 0, table*as.numeric(name), 0)
+  c <- -2*n + sum(table)
+  return(c)
+}
+
+# example for 5 dice
+play_dice_v3(5)
+```
+
+#### Version 4
+
+```{r}
+#' Title: the v4 function for dice game
+#'
+#' @param n - the number of dice to roll
+#'
+#' @return total winnings or loses
+#' @export
+#'
+#' @examples
+play_dice_v4 <- function(n){
+  dice <- sample(1:6, n, replace = TRUE)
+  dice_v4 <- sapply(dice, set_value <- function(dice){
+    ifelse(dice %% 2 == 0, dice, 0)
+  })
+  c <- -2*n + sum(dice_v4)
+  return(c)
+}
+
+# example for 10 dice
+play_dice_v4(10)
+```
+
+### (b)
+
+```{r}
+# Test with input = 3
+play_dice_v1(3)
+play_dice_v2(3)
+play_dice_v3(3)
+play_dice_v4(3)
+
+# Test with input = 3000
+play_dice_v1(3000)
+play_dice_v2(3000)
+play_dice_v3(3000)
+play_dice_v4(3000)
+```
+
+Obviously, all versions work.
+
+### (c)
+
+```{r}
+# Test with input = 3
+# We control the randomization by set a stable random seed.
+set.seed(1234)
+play_dice_v1(3)
+set.seed(1234)
+play_dice_v2(3)
+set.seed(1234)
+play_dice_v3(3)
+set.seed(1234)
+play_dice_v4(3)
+
+# Test with input = 3000
+set.seed(1234)
+play_dice_v1(3000)
+set.seed(1234)
+play_dice_v2(3000)
+set.seed(1234)
+play_dice_v3(3000)
+set.seed(1234)
+play_dice_v4(3000)
+```
+All the versions give the same result.
+
+### (d)
+
+```{r}
+# the speed of low input
+microbenchmark(play_dice_v1(100), play_dice_v2(100), play_dice_v3(100), play_dice_v4(100))
+
+# the speed of large input
+microbenchmark(play_dice_v1(10000), play_dice_v2(10000), play_dice_v3(10000), play_dice_v4(10000))
+```
+
+#### Discussion
+The vectorization is fastest, and `table()` is the second fastest, while `for` loop and `apply` are slow but `for` loop is much slower. The reason vectorization is fastest has to do with the fact that the built-in R function `sum()` is implemented in the compiled language, which is fast. As for `table()`, although it is efficient a lot, create the table still give computational costs. For `for` loop, R needs to interpret the meaning of code and also `for` loop requires indexing into the value using the subset function in each iteration, which is time-consuming. The `sapply` function improves efficiency compared to `for` loops but it still cost time in some matrix computations.
+
+The speed difference between v1 & v4 and v2 & v3 is more significant when we input a large number, but the speed difference between v2 & v3 is less significant when we input a large number.
+
+### (e)
+
+Assume that the standard of a game is a fair or not is its mean = 0.
+Suppose $H_0: mean = 0, H_1: mean \ne 0$.
+```{r}
+set.seed(1024)
+mcrep <- 10000                  # The number of replications
+n <- c(5, 10, 100)                         # Roll size we are studying
+# Create an empty matrix for saving result of each roll.
+sim <- array(NA, dim = c(mcrep, 1))        
+for (j in 1:3){
+  n0 <- n[j]
+  for (i in 1:mcrep){
+    sim[i] <- play_dice_v1(n0)
+  }
+  # calculate and print the p-value of data
+  print(paste("The p-value for roll size =", n0, "is", t.test(sim)$p.value))
+}
+```
+Since p-value is large, we can accept $H_0$. This game is fair.
+
+## Q2
+
+### (a)
+
+```{r}
+# Import the dataset
+df <- read.csv("/Users/wumanning/Desktop/cars.csv", sep=',', header = TRUE)
+# Pick up the name after '.'
+names(df) <- sub(".*\\.", "", names(df))
+# Rename column name to a more reasonable name related to the description of each column
+names(df)[5] <- "Engine_Type"
+names(df)[7] <- "Number_of_Forward_Gears"
+names(df)[9] <- "City_mpg"
+names(df)[10] <- "Fuel_Type"
+names(df)[11] <- "Highway_mpg"
+names(df)[15] <- "Model_Year"
+names(df)[16] <- "Released_Year"
+
+# Example for data.frame after processing
+head(df)
+```
+
+### (b)
+
+```{r}
+# Restrict the data to cars whose Fuel Type is “Gasoline”
+df_gas <- df %>% filter(df$`Fuel_Type` == "Gasoline")
+
+# Example for data.frame after processing
+head(df_gas)
+```
+
+### (c)
+
+```{r}
+# Check if there exist unknown values from three dimensions as description document said.
+summary(df_gas)
+```
+Since the minimum of three dimensions are all larger than 0, there is no unknown value related to dimensions.
+```{r}
+# Estimate the model (Dependent var: Highway_mpg; 
+# Independent vars: Horsepower + Torque + Height + Length + Width + Released Year)
+model_c <- lm(Highway_mpg ~ Horsepower + Torque + Height + Length + Width + factor(Released_Year), 
+              data = df_gas)
+# See the brief information for model
+summary(model_c)
+```
+
+#### Discussion
+
+According to the summary of model above, we find that `Horsepower` has positive effect on `Highway mpg`, and the effect is significant due to its `Signif. codes` is `***`. To be more precise, when we add 1 more `Horsepower`, `Highway mpg` will increase 0.0163556 (We can also interpret it as when `Horsepower` increases about 61, `Highway mpg` will increase 1 since `Highway mpg` is integer.)
+
+### (d)
+
+```{r}
+# Estimate the model (Dependent var: Highway_mpg; 
+# Independent vars: Horsepower * Torque + Horsepower + Torque + Height + Length + Width + Released Year)
+model_d <- lm(Highway_mpg ~ Horsepower * Torque + Horsepower + Torque + Height + Length + Width + factor(Released_Year), 
+              data = df_gas)
+# See the brief information for model
+summary(model_d)
+```
+```{r}
+# All the statistical characteristics are from the `summary(df_gas)` above.
+# choose 1st Qu. & median & 3rd Qu. as reasonable values for `Torque`
+value_Torque <- c(177, 257, 332)
+# choose mode as reasonable values for `Released_Year`
+value_year <- c(names(sort(table(df_gas$Released_Year), decreasing = TRUE)[1]))
+# choose integers between 1st Qu. and 3rd Qu. as reasonable values for `Horsepower `
+value_Horsepower <- seq(185, 317, by = 1)
+```
+
+```{r}
+# Set up the value for `Released Year`
+year <- value_year
+names(year) <- c("Released_Year")
+# Generate the interact plot
+interact_plot(model_d,
+              pred = Horsepower,
+              modx = Torque,
+              # Set up the value for `Torque`
+              modx.values = value_Torque,
+              at = year,
+              colors = "blue",
+              interval = TRUE, 
+              int.width = 0.9, 
+              robust = TRUE, # use robust SE
+              # Restrict the value for `Horsepower`
+              data = df_gas %>% filter(Horsepower %in% value_Horsepower)
+              ) 
+```
+
+### (e)
+Follow by the formula:
+
+$$\hat{\beta} = (X^TX)^{-1}X^Ty$$
+```{r}
+# Set up X and y
+ff <- Highway_mpg ~ Horsepower*Torque + Height + Length + Width + factor(Released_Year)
+X <- model.matrix(ff, df_gas)
+y <- df_gas$Highway_mpg
+# calculate X^TX
+XtX <- t(X) %*% X
+# inverse of X^TX
+XtXi <- solve(XtX)
+# Generate \hat{beta}
+beta <- XtXi %*% t(X) %*% y
+beta
+```
+
+```{r}
+# Test if I get the same result as `lm()` did prior (the error is within 10^{-10}).
+if (all(coef(model_d)-beta[,1] < 10^{-10})){
+  print("You get the same result!")
+}else{
+  print("Sorry...They are different, please try again :(")
+}
+```
+
+## Q3
+
+### Set up
+
+```stata
+. do "/Users/wumanning/Desktop/506 ASS2.do"
+
+. * import the data
+. import delimited "/Users/wumanning/Desktop/cars.csv", clear
+(encoding automatically selected: ISO-8859-1)
+(18 vars, 5,076 obs)
+```
+### (a)
+
+```stata
+. // Rename the column name
+. rename (dimensionsheight dimensionslength dimensionswidth engineinformationdriveline engineinformationenginetype engineinformationhy
+> brid engineinformationnumberofforward engineinformationtransmission fuelinformationcitympg fuelinformationfueltype fuelinformationhi
+> ghwaympg identificationclassification identificationid identificationmake identificationmodelyear identificationyear engineinformati
+> onenginestatistic v18 ) (Height Length Width Driveline EngineType Hybrid NumberOfForwardGears Transmission Citympg FuelType Highwaym
+> pg Classification ID Make ModelYear ReleasedYear Horsepower Torque)
+```
+### (b)
+
+```stata
+. // Restrict the data to cars whose Fuel Type is "Gasoline".
+. keep if FuelType == "Gasoline" 
+(485 observations deleted)
+```
+
+### (c)
+
+```stata
+. // do regression
+. regress Highwaympg Horsepower Torque Height Length Width i.ReleasedYear
+
+      Source |       SS           df       MS      Number of obs   =     4,591
+-------------+----------------------------------   F(8, 4582)      =    413.35
+       Model |  70043.6695         8  8755.45869   Prob > F        =    0.0000
+    Residual |   97055.298     4,582  21.1818634   R-squared       =    0.4192
+-------------+----------------------------------   Adj R-squared   =    0.4182
+       Total |  167098.968     4,590  36.4050038   Root MSE        =    4.6024
+
+------------------------------------------------------------------------------
+  Highwaympg | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+  Horsepower |   .0163556   .0022772     7.18   0.000     .0118913      .02082
+      Torque |  -.0507425    .002203   -23.03   0.000    -.0550614   -.0464236
+      Height |   .0099079   .0011267     8.79   0.000      .007699    .0121168
+      Length |    .001729   .0008836     1.96   0.050    -3.36e-06    .0034613
+       Width |  -.0003343   .0009045    -0.37   0.712    -.0021075    .0014388
+             |
+ReleasedYear |
+       2010  |  -.4539681   .6768246    -0.67   0.502     -1.78087    .8729342
+       2011  |   .1711016   .6757043     0.25   0.800    -1.153604    1.495808
+       2012  |   1.302928   .6810076     1.91   0.056    -.0321751    2.638031
+             |
+       _cons |   32.29266   .7225982    44.69   0.000     30.87602     33.7093
+------------------------------------------------------------------------------
+```
+#### Discussion
+
+According to the summary of model above, we find that `Horsepower` has positive effect on `Highwaympg`, and the effect is significant due to its p-value is close to 0. To be more precise, when we add 1 more `Horsepower`, `Highway mpg` will increase 0.0163556 (We can also interpret it as when `Horsepower` increases about 61, `Highwaympg` will increase 1 since `Highwaympg` is integer.)
+
+### (d)
+
+```stata
+. // do regression
+. regress Highwaympg c.Horsepower##c.Torque Height Length Width i.ReleasedYear
+
+      Source |       SS           df       MS      Number of obs   =     4,591
+-------------+----------------------------------   F(9, 4581)      =    480.07
+       Model |  81105.8715         9  9011.76351   Prob > F        =    0.0000
+    Residual |   85993.096     4,581  18.7716865   R-squared       =    0.4854
+-------------+----------------------------------   Adj R-squared   =    0.4844
+       Total |  167098.968     4,590  36.4050038   Root MSE        =    4.3326
+
+---------------------------------------------------------------------------------------
+           Highwaympg | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+----------------------+----------------------------------------------------------------
+           Horsepower |  -.0166633   .0025388    -6.56   0.000    -.0216406    -.011686
+               Torque |  -.0860593   .0025333   -33.97   0.000    -.0910257   -.0810928
+                      |
+c.Horsepower#c.Torque |   .0001124   4.63e-06    24.28   0.000     .0001033    .0001214
+                      |
+               Height |   .0065604   .0010696     6.13   0.000     .0044634    .0086573
+               Length |   .0017767   .0008318     2.14   0.033     .0001459    .0034075
+                Width |  -.0011694   .0008521    -1.37   0.170      -.00284    .0005011
+                      |
+         ReleasedYear |
+                2010  |  -.5627858   .6371716    -0.88   0.377    -1.811949    .6863777
+                2011  |   .0725356   .6361142     0.11   0.909    -1.174555    1.319626
+                2012  |   1.197033   .6411085     1.87   0.062    -.0598488    2.453915
+                      |
+                _cons |   42.18795   .7930274    53.20   0.000     40.63323    43.74266
+---------------------------------------------------------------------------------------
+
+. // The reasonable values for `Horsepower` and `Torque` is same as what we do in r
+. // `Horsepower`: integers from 1st Qu. to 3rd Qu.
+. // `Torque`: 1st Qu., 3rd Qu., and median.
+. // Prepare for generating interact plot
+. margins , at(Horsepower = (185(1)317) Torque = (177, 257, 332))
+
+Predictive margins                                       Number of obs = 4,591
+Model VCE: OLS
+
+Expression: Linear prediction, predict()
+
+. // it has a long expression, which can be check in appendix.
+
+. // Generate plot
+. marginsplot, legend (title("Torque")) ///
+>         title("Relationship between Horsepower and Highwaympg changes as Torque changes") ///
+>         ytitle("Highwaympg") xtitle("Horsepower")
+
+
+Variables that uniquely identify margins: Horsepower Torque
+. 
+. graph export "mygraph.png", replace
+file /Users/wumanning/Desktop/mygraph.png saved as PNG format
+```
+#### Gragh
+![2d](/Users/wumanning/Desktop/mygraph.png "2d")
+
+### (e)
+
+```stata
+. // Create new column in dataframe for later matrix generation
+. // Turn `ReleasedYear` to dummy variable
+. tabulate ReleasedYear, generate(ReleasedYearDummy) 
+
+Identificat |
+   ion.Year |      Freq.     Percent        Cum.
+------------+-----------------------------------
+       2009 |         48        1.05        1.05
+       2010 |      1,633       35.57       36.62
+       2011 |      1,794       39.08       75.69
+       2012 |      1,116       24.31      100.00
+------------+-----------------------------------
+      Total |      4,591      100.00
+
+. // Create the interaction variable
+. gen interactor = Horsepower*Torque
+
+. // Create the intercept, a vector with 1
+. gen intercept = Horsepower*0 + 1
+
+. 
+. // Do munual calculation for \hat{\beta}
+. mata
+------------------------------------------------- mata (type end to exit) ------------------------------------------------------------
+: X = st_data(., "intercept Horsepower Torque interactor Height Length Width ReleasedYearDummy2 ReleasedYearDummy3  ReleasedYearDummy4
+> ")
+
+: y = st_data(., "Highwaympg")
+
+: XTX = X'X
+
+: XTXi = invsym(XTX) //inverse of XTX
+
+: beta = XTXi*X'*y 
+
+: beta
+                   1
+     +----------------+
+   1 |   42.18794787  |
+   2 |  -.0166633227  |
+   3 |  -.0860592704  |
+   4 |   .0001123567  |
+   5 |   .0065603903  |
+   6 |   .0017767232  |
+   7 |  -.0011694485  |
+   8 |   -.562785777  |
+   9 |   .0725356431  |
+  10 |   1.197032999  |
+     +----------------+
+
+: end
+--------------------------------------------------------------------------------------------------------------------------------------
+
+. 
+end of do-file
+
+```
+Recall from 3d that, the coefficient is as below:
+```stata
+------------------------------------
+           Highwaympg | Coefficient  
+----------------------+-------------
+           Horsepower |  -.0166633   
+               Torque |  -.0860593   
+                      |
+c.Horsepower#c.Torque |   .0001124   
+                      |
+               Height |   .0065604   
+               Length |   .0017767   
+                Width |  -.0011694   
+                      |
+         ReleasedYear |
+                2010  |  -.5627858  
+                2011  |   .0725356   
+                2012  |   1.197033   
+                      |
+                _cons |   42.18795   
+------------------------------------
+```
+The result is same as 3(d) by comparison.
+
+### Appendix for Q3
+
+```stata
+1._at:   Horsepower = 185
+         Torque     = 177
+2._at:   Horsepower = 185
+         Torque     = 257
+3._at:   Horsepower = 185
+         Torque     = 332
+4._at:   Horsepower = 186
+         Torque     = 177
+5._at:   Horsepower = 186
+         Torque     = 257
+6._at:   Horsepower = 186
+         Torque     = 332
+7._at:   Horsepower = 187
+         Torque     = 177
+8._at:   Horsepower = 187
+         Torque     = 257
+9._at:   Horsepower = 187
+         Torque     = 332
+10._at:  Horsepower = 188
+         Torque     = 177
+11._at:  Horsepower = 188
+         Torque     = 257
+12._at:  Horsepower = 188
+         Torque     = 332
+13._at:  Horsepower = 189
+         Torque     = 177
+14._at:  Horsepower = 189
+         Torque     = 257
+15._at:  Horsepower = 189
+         Torque     = 332
+16._at:  Horsepower = 190
+         Torque     = 177
+17._at:  Horsepower = 190
+         Torque     = 257
+18._at:  Horsepower = 190
+         Torque     = 332
+19._at:  Horsepower = 191
+         Torque     = 177
+20._at:  Horsepower = 191
+         Torque     = 257
+21._at:  Horsepower = 191
+         Torque     = 332
+22._at:  Horsepower = 192
+         Torque     = 177
+23._at:  Horsepower = 192
+         Torque     = 257
+24._at:  Horsepower = 192
+         Torque     = 332
+25._at:  Horsepower = 193
+         Torque     = 177
+26._at:  Horsepower = 193
+         Torque     = 257
+27._at:  Horsepower = 193
+         Torque     = 332
+28._at:  Horsepower = 194
+         Torque     = 177
+29._at:  Horsepower = 194
+         Torque     = 257
+30._at:  Horsepower = 194
+         Torque     = 332
+31._at:  Horsepower = 195
+         Torque     = 177
+32._at:  Horsepower = 195
+         Torque     = 257
+33._at:  Horsepower = 195
+         Torque     = 332
+34._at:  Horsepower = 196
+         Torque     = 177
+35._at:  Horsepower = 196
+         Torque     = 257
+36._at:  Horsepower = 196
+         Torque     = 332
+37._at:  Horsepower = 197
+         Torque     = 177
+38._at:  Horsepower = 197
+         Torque     = 257
+39._at:  Horsepower = 197
+         Torque     = 332
+40._at:  Horsepower = 198
+         Torque     = 177
+41._at:  Horsepower = 198
+         Torque     = 257
+42._at:  Horsepower = 198
+         Torque     = 332
+43._at:  Horsepower = 199
+         Torque     = 177
+44._at:  Horsepower = 199
+         Torque     = 257
+45._at:  Horsepower = 199
+         Torque     = 332
+46._at:  Horsepower = 200
+         Torque     = 177
+47._at:  Horsepower = 200
+         Torque     = 257
+48._at:  Horsepower = 200
+         Torque     = 332
+49._at:  Horsepower = 201
+         Torque     = 177
+50._at:  Horsepower = 201
+         Torque     = 257
+51._at:  Horsepower = 201
+         Torque     = 332
+52._at:  Horsepower = 202
+         Torque     = 177
+53._at:  Horsepower = 202
+         Torque     = 257
+54._at:  Horsepower = 202
+         Torque     = 332
+55._at:  Horsepower = 203
+         Torque     = 177
+56._at:  Horsepower = 203
+         Torque     = 257
+57._at:  Horsepower = 203
+         Torque     = 332
+58._at:  Horsepower = 204
+         Torque     = 177
+59._at:  Horsepower = 204
+         Torque     = 257
+60._at:  Horsepower = 204
+         Torque     = 332
+61._at:  Horsepower = 205
+         Torque     = 177
+62._at:  Horsepower = 205
+         Torque     = 257
+63._at:  Horsepower = 205
+         Torque     = 332
+64._at:  Horsepower = 206
+         Torque     = 177
+65._at:  Horsepower = 206
+         Torque     = 257
+66._at:  Horsepower = 206
+         Torque     = 332
+67._at:  Horsepower = 207
+         Torque     = 177
+68._at:  Horsepower = 207
+         Torque     = 257
+69._at:  Horsepower = 207
+         Torque     = 332
+70._at:  Horsepower = 208
+         Torque     = 177
+71._at:  Horsepower = 208
+         Torque     = 257
+72._at:  Horsepower = 208
+         Torque     = 332
+73._at:  Horsepower = 209
+         Torque     = 177
+74._at:  Horsepower = 209
+         Torque     = 257
+75._at:  Horsepower = 209
+         Torque     = 332
+76._at:  Horsepower = 210
+         Torque     = 177
+77._at:  Horsepower = 210
+         Torque     = 257
+78._at:  Horsepower = 210
+         Torque     = 332
+79._at:  Horsepower = 211
+         Torque     = 177
+80._at:  Horsepower = 211
+         Torque     = 257
+81._at:  Horsepower = 211
+         Torque     = 332
+82._at:  Horsepower = 212
+         Torque     = 177
+83._at:  Horsepower = 212
+         Torque     = 257
+84._at:  Horsepower = 212
+         Torque     = 332
+85._at:  Horsepower = 213
+         Torque     = 177
+86._at:  Horsepower = 213
+         Torque     = 257
+87._at:  Horsepower = 213
+         Torque     = 332
+88._at:  Horsepower = 214
+         Torque     = 177
+89._at:  Horsepower = 214
+         Torque     = 257
+90._at:  Horsepower = 214
+         Torque     = 332
+91._at:  Horsepower = 215
+         Torque     = 177
+92._at:  Horsepower = 215
+         Torque     = 257
+93._at:  Horsepower = 215
+         Torque     = 332
+94._at:  Horsepower = 216
+         Torque     = 177
+95._at:  Horsepower = 216
+         Torque     = 257
+96._at:  Horsepower = 216
+         Torque     = 332
+97._at:  Horsepower = 217
+         Torque     = 177
+98._at:  Horsepower = 217
+         Torque     = 257
+99._at:  Horsepower = 217
+         Torque     = 332
+100._at: Horsepower = 218
+         Torque     = 177
+101._at: Horsepower = 218
+         Torque     = 257
+102._at: Horsepower = 218
+         Torque     = 332
+103._at: Horsepower = 219
+         Torque     = 177
+104._at: Horsepower = 219
+         Torque     = 257
+105._at: Horsepower = 219
+         Torque     = 332
+106._at: Horsepower = 220
+         Torque     = 177
+107._at: Horsepower = 220
+         Torque     = 257
+108._at: Horsepower = 220
+         Torque     = 332
+109._at: Horsepower = 221
+         Torque     = 177
+110._at: Horsepower = 221
+         Torque     = 257
+111._at: Horsepower = 221
+         Torque     = 332
+112._at: Horsepower = 222
+         Torque     = 177
+113._at: Horsepower = 222
+         Torque     = 257
+114._at: Horsepower = 222
+         Torque     = 332
+115._at: Horsepower = 223
+         Torque     = 177
+116._at: Horsepower = 223
+         Torque     = 257
+117._at: Horsepower = 223
+         Torque     = 332
+118._at: Horsepower = 224
+         Torque     = 177
+119._at: Horsepower = 224
+         Torque     = 257
+120._at: Horsepower = 224
+         Torque     = 332
+121._at: Horsepower = 225
+         Torque     = 177
+122._at: Horsepower = 225
+         Torque     = 257
+123._at: Horsepower = 225
+         Torque     = 332
+124._at: Horsepower = 226
+         Torque     = 177
+125._at: Horsepower = 226
+         Torque     = 257
+126._at: Horsepower = 226
+         Torque     = 332
+127._at: Horsepower = 227
+         Torque     = 177
+128._at: Horsepower = 227
+         Torque     = 257
+129._at: Horsepower = 227
+         Torque     = 332
+130._at: Horsepower = 228
+         Torque     = 177
+131._at: Horsepower = 228
+         Torque     = 257
+132._at: Horsepower = 228
+         Torque     = 332
+133._at: Horsepower = 229
+         Torque     = 177
+134._at: Horsepower = 229
+         Torque     = 257
+135._at: Horsepower = 229
+         Torque     = 332
+136._at: Horsepower = 230
+         Torque     = 177
+137._at: Horsepower = 230
+         Torque     = 257
+138._at: Horsepower = 230
+         Torque     = 332
+139._at: Horsepower = 231
+         Torque     = 177
+140._at: Horsepower = 231
+         Torque     = 257
+141._at: Horsepower = 231
+         Torque     = 332
+142._at: Horsepower = 232
+         Torque     = 177
+143._at: Horsepower = 232
+         Torque     = 257
+144._at: Horsepower = 232
+         Torque     = 332
+145._at: Horsepower = 233
+         Torque     = 177
+146._at: Horsepower = 233
+         Torque     = 257
+147._at: Horsepower = 233
+         Torque     = 332
+148._at: Horsepower = 234
+         Torque     = 177
+149._at: Horsepower = 234
+         Torque     = 257
+150._at: Horsepower = 234
+         Torque     = 332
+151._at: Horsepower = 235
+         Torque     = 177
+152._at: Horsepower = 235
+         Torque     = 257
+153._at: Horsepower = 235
+         Torque     = 332
+154._at: Horsepower = 236
+         Torque     = 177
+155._at: Horsepower = 236
+         Torque     = 257
+156._at: Horsepower = 236
+         Torque     = 332
+157._at: Horsepower = 237
+         Torque     = 177
+158._at: Horsepower = 237
+         Torque     = 257
+159._at: Horsepower = 237
+         Torque     = 332
+160._at: Horsepower = 238
+         Torque     = 177
+161._at: Horsepower = 238
+         Torque     = 257
+162._at: Horsepower = 238
+         Torque     = 332
+163._at: Horsepower = 239
+         Torque     = 177
+164._at: Horsepower = 239
+         Torque     = 257
+165._at: Horsepower = 239
+         Torque     = 332
+166._at: Horsepower = 240
+         Torque     = 177
+167._at: Horsepower = 240
+         Torque     = 257
+168._at: Horsepower = 240
+         Torque     = 332
+169._at: Horsepower = 241
+         Torque     = 177
+170._at: Horsepower = 241
+         Torque     = 257
+171._at: Horsepower = 241
+         Torque     = 332
+172._at: Horsepower = 242
+         Torque     = 177
+173._at: Horsepower = 242
+         Torque     = 257
+174._at: Horsepower = 242
+         Torque     = 332
+175._at: Horsepower = 243
+         Torque     = 177
+176._at: Horsepower = 243
+         Torque     = 257
+177._at: Horsepower = 243
+         Torque     = 332
+178._at: Horsepower = 244
+         Torque     = 177
+179._at: Horsepower = 244
+         Torque     = 257
+180._at: Horsepower = 244
+         Torque     = 332
+181._at: Horsepower = 245
+         Torque     = 177
+182._at: Horsepower = 245
+         Torque     = 257
+183._at: Horsepower = 245
+         Torque     = 332
+184._at: Horsepower = 246
+         Torque     = 177
+185._at: Horsepower = 246
+         Torque     = 257
+186._at: Horsepower = 246
+         Torque     = 332
+187._at: Horsepower = 247
+         Torque     = 177
+188._at: Horsepower = 247
+         Torque     = 257
+189._at: Horsepower = 247
+         Torque     = 332
+190._at: Horsepower = 248
+         Torque     = 177
+191._at: Horsepower = 248
+         Torque     = 257
+192._at: Horsepower = 248
+         Torque     = 332
+193._at: Horsepower = 249
+         Torque     = 177
+194._at: Horsepower = 249
+         Torque     = 257
+195._at: Horsepower = 249
+         Torque     = 332
+196._at: Horsepower = 250
+         Torque     = 177
+197._at: Horsepower = 250
+         Torque     = 257
+198._at: Horsepower = 250
+         Torque     = 332
+199._at: Horsepower = 251
+         Torque     = 177
+200._at: Horsepower = 251
+         Torque     = 257
+201._at: Horsepower = 251
+         Torque     = 332
+202._at: Horsepower = 252
+         Torque     = 177
+203._at: Horsepower = 252
+         Torque     = 257
+204._at: Horsepower = 252
+         Torque     = 332
+205._at: Horsepower = 253
+         Torque     = 177
+206._at: Horsepower = 253
+         Torque     = 257
+207._at: Horsepower = 253
+         Torque     = 332
+208._at: Horsepower = 254
+         Torque     = 177
+209._at: Horsepower = 254
+         Torque     = 257
+210._at: Horsepower = 254
+         Torque     = 332
+211._at: Horsepower = 255
+         Torque     = 177
+212._at: Horsepower = 255
+         Torque     = 257
+213._at: Horsepower = 255
+         Torque     = 332
+214._at: Horsepower = 256
+         Torque     = 177
+215._at: Horsepower = 256
+         Torque     = 257
+216._at: Horsepower = 256
+         Torque     = 332
+217._at: Horsepower = 257
+         Torque     = 177
+218._at: Horsepower = 257
+         Torque     = 257
+219._at: Horsepower = 257
+         Torque     = 332
+220._at: Horsepower = 258
+         Torque     = 177
+221._at: Horsepower = 258
+         Torque     = 257
+222._at: Horsepower = 258
+         Torque     = 332
+223._at: Horsepower = 259
+         Torque     = 177
+224._at: Horsepower = 259
+         Torque     = 257
+225._at: Horsepower = 259
+         Torque     = 332
+226._at: Horsepower = 260
+         Torque     = 177
+227._at: Horsepower = 260
+         Torque     = 257
+228._at: Horsepower = 260
+         Torque     = 332
+229._at: Horsepower = 261
+         Torque     = 177
+230._at: Horsepower = 261
+         Torque     = 257
+231._at: Horsepower = 261
+         Torque     = 332
+232._at: Horsepower = 262
+         Torque     = 177
+233._at: Horsepower = 262
+         Torque     = 257
+234._at: Horsepower = 262
+         Torque     = 332
+235._at: Horsepower = 263
+         Torque     = 177
+236._at: Horsepower = 263
+         Torque     = 257
+237._at: Horsepower = 263
+         Torque     = 332
+238._at: Horsepower = 264
+         Torque     = 177
+239._at: Horsepower = 264
+         Torque     = 257
+240._at: Horsepower = 264
+         Torque     = 332
+241._at: Horsepower = 265
+         Torque     = 177
+242._at: Horsepower = 265
+         Torque     = 257
+243._at: Horsepower = 265
+         Torque     = 332
+244._at: Horsepower = 266
+         Torque     = 177
+245._at: Horsepower = 266
+         Torque     = 257
+246._at: Horsepower = 266
+         Torque     = 332
+247._at: Horsepower = 267
+         Torque     = 177
+248._at: Horsepower = 267
+         Torque     = 257
+249._at: Horsepower = 267
+         Torque     = 332
+250._at: Horsepower = 268
+         Torque     = 177
+251._at: Horsepower = 268
+         Torque     = 257
+252._at: Horsepower = 268
+         Torque     = 332
+253._at: Horsepower = 269
+         Torque     = 177
+254._at: Horsepower = 269
+         Torque     = 257
+255._at: Horsepower = 269
+         Torque     = 332
+256._at: Horsepower = 270
+         Torque     = 177
+257._at: Horsepower = 270
+         Torque     = 257
+258._at: Horsepower = 270
+         Torque     = 332
+259._at: Horsepower = 271
+         Torque     = 177
+260._at: Horsepower = 271
+         Torque     = 257
+261._at: Horsepower = 271
+         Torque     = 332
+262._at: Horsepower = 272
+         Torque     = 177
+263._at: Horsepower = 272
+         Torque     = 257
+264._at: Horsepower = 272
+         Torque     = 332
+265._at: Horsepower = 273
+         Torque     = 177
+266._at: Horsepower = 273
+         Torque     = 257
+267._at: Horsepower = 273
+         Torque     = 332
+268._at: Horsepower = 274
+         Torque     = 177
+269._at: Horsepower = 274
+         Torque     = 257
+270._at: Horsepower = 274
+         Torque     = 332
+271._at: Horsepower = 275
+         Torque     = 177
+272._at: Horsepower = 275
+         Torque     = 257
+273._at: Horsepower = 275
+         Torque     = 332
+274._at: Horsepower = 276
+         Torque     = 177
+275._at: Horsepower = 276
+         Torque     = 257
+276._at: Horsepower = 276
+         Torque     = 332
+277._at: Horsepower = 277
+         Torque     = 177
+278._at: Horsepower = 277
+         Torque     = 257
+279._at: Horsepower = 277
+         Torque     = 332
+280._at: Horsepower = 278
+         Torque     = 177
+281._at: Horsepower = 278
+         Torque     = 257
+282._at: Horsepower = 278
+         Torque     = 332
+283._at: Horsepower = 279
+         Torque     = 177
+284._at: Horsepower = 279
+         Torque     = 257
+285._at: Horsepower = 279
+         Torque     = 332
+286._at: Horsepower = 280
+         Torque     = 177
+287._at: Horsepower = 280
+         Torque     = 257
+288._at: Horsepower = 280
+         Torque     = 332
+289._at: Horsepower = 281
+         Torque     = 177
+290._at: Horsepower = 281
+         Torque     = 257
+291._at: Horsepower = 281
+         Torque     = 332
+292._at: Horsepower = 282
+         Torque     = 177
+293._at: Horsepower = 282
+         Torque     = 257
+294._at: Horsepower = 282
+         Torque     = 332
+295._at: Horsepower = 283
+         Torque     = 177
+296._at: Horsepower = 283
+         Torque     = 257
+297._at: Horsepower = 283
+         Torque     = 332
+298._at: Horsepower = 284
+         Torque     = 177
+299._at: Horsepower = 284
+         Torque     = 257
+300._at: Horsepower = 284
+         Torque     = 332
+301._at: Horsepower = 285
+         Torque     = 177
+302._at: Horsepower = 285
+         Torque     = 257
+303._at: Horsepower = 285
+         Torque     = 332
+304._at: Horsepower = 286
+         Torque     = 177
+305._at: Horsepower = 286
+         Torque     = 257
+306._at: Horsepower = 286
+         Torque     = 332
+307._at: Horsepower = 287
+         Torque     = 177
+308._at: Horsepower = 287
+         Torque     = 257
+309._at: Horsepower = 287
+         Torque     = 332
+310._at: Horsepower = 288
+         Torque     = 177
+311._at: Horsepower = 288
+         Torque     = 257
+312._at: Horsepower = 288
+         Torque     = 332
+313._at: Horsepower = 289
+         Torque     = 177
+314._at: Horsepower = 289
+         Torque     = 257
+315._at: Horsepower = 289
+         Torque     = 332
+316._at: Horsepower = 290
+         Torque     = 177
+317._at: Horsepower = 290
+         Torque     = 257
+318._at: Horsepower = 290
+         Torque     = 332
+319._at: Horsepower = 291
+         Torque     = 177
+320._at: Horsepower = 291
+         Torque     = 257
+321._at: Horsepower = 291
+         Torque     = 332
+322._at: Horsepower = 292
+         Torque     = 177
+323._at: Horsepower = 292
+         Torque     = 257
+324._at: Horsepower = 292
+         Torque     = 332
+325._at: Horsepower = 293
+         Torque     = 177
+326._at: Horsepower = 293
+         Torque     = 257
+327._at: Horsepower = 293
+         Torque     = 332
+328._at: Horsepower = 294
+         Torque     = 177
+329._at: Horsepower = 294
+         Torque     = 257
+330._at: Horsepower = 294
+         Torque     = 332
+331._at: Horsepower = 295
+         Torque     = 177
+332._at: Horsepower = 295
+         Torque     = 257
+333._at: Horsepower = 295
+         Torque     = 332
+334._at: Horsepower = 296
+         Torque     = 177
+335._at: Horsepower = 296
+         Torque     = 257
+336._at: Horsepower = 296
+         Torque     = 332
+337._at: Horsepower = 297
+         Torque     = 177
+338._at: Horsepower = 297
+         Torque     = 257
+339._at: Horsepower = 297
+         Torque     = 332
+340._at: Horsepower = 298
+         Torque     = 177
+341._at: Horsepower = 298
+         Torque     = 257
+342._at: Horsepower = 298
+         Torque     = 332
+343._at: Horsepower = 299
+         Torque     = 177
+344._at: Horsepower = 299
+         Torque     = 257
+345._at: Horsepower = 299
+         Torque     = 332
+346._at: Horsepower = 300
+         Torque     = 177
+347._at: Horsepower = 300
+         Torque     = 257
+348._at: Horsepower = 300
+         Torque     = 332
+349._at: Horsepower = 301
+         Torque     = 177
+350._at: Horsepower = 301
+         Torque     = 257
+351._at: Horsepower = 301
+         Torque     = 332
+352._at: Horsepower = 302
+         Torque     = 177
+353._at: Horsepower = 302
+         Torque     = 257
+354._at: Horsepower = 302
+         Torque     = 332
+355._at: Horsepower = 303
+         Torque     = 177
+356._at: Horsepower = 303
+         Torque     = 257
+357._at: Horsepower = 303
+         Torque     = 332
+358._at: Horsepower = 304
+         Torque     = 177
+359._at: Horsepower = 304
+         Torque     = 257
+360._at: Horsepower = 304
+         Torque     = 332
+361._at: Horsepower = 305
+         Torque     = 177
+362._at: Horsepower = 305
+         Torque     = 257
+363._at: Horsepower = 305
+         Torque     = 332
+364._at: Horsepower = 306
+         Torque     = 177
+365._at: Horsepower = 306
+         Torque     = 257
+366._at: Horsepower = 306
+         Torque     = 332
+367._at: Horsepower = 307
+         Torque     = 177
+368._at: Horsepower = 307
+         Torque     = 257
+369._at: Horsepower = 307
+         Torque     = 332
+370._at: Horsepower = 308
+         Torque     = 177
+371._at: Horsepower = 308
+         Torque     = 257
+372._at: Horsepower = 308
+         Torque     = 332
+373._at: Horsepower = 309
+         Torque     = 177
+374._at: Horsepower = 309
+         Torque     = 257
+375._at: Horsepower = 309
+         Torque     = 332
+376._at: Horsepower = 310
+         Torque     = 177
+377._at: Horsepower = 310
+         Torque     = 257
+378._at: Horsepower = 310
+         Torque     = 332
+379._at: Horsepower = 311
+         Torque     = 177
+380._at: Horsepower = 311
+         Torque     = 257
+381._at: Horsepower = 311
+         Torque     = 332
+382._at: Horsepower = 312
+         Torque     = 177
+383._at: Horsepower = 312
+         Torque     = 257
+384._at: Horsepower = 312
+         Torque     = 332
+385._at: Horsepower = 313
+         Torque     = 177
+386._at: Horsepower = 313
+         Torque     = 257
+387._at: Horsepower = 313
+         Torque     = 332
+388._at: Horsepower = 314
+         Torque     = 177
+389._at: Horsepower = 314
+         Torque     = 257
+390._at: Horsepower = 314
+         Torque     = 332
+391._at: Horsepower = 315
+         Torque     = 177
+392._at: Horsepower = 315
+         Torque     = 257
+393._at: Horsepower = 315
+         Torque     = 332
+394._at: Horsepower = 316
+         Torque     = 177
+395._at: Horsepower = 316
+         Torque     = 257
+396._at: Horsepower = 316
+         Torque     = 332
+397._at: Horsepower = 317
+         Torque     = 177
+398._at: Horsepower = 317
+         Torque     = 257
+399._at: Horsepower = 317
+         Torque     = 332
+
+------------------------------------------------------------------------------
+             |            Delta-method
+             |     Margin   std. err.      t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+         _at |
+          1  |   28.70326   .0887865   323.28   0.000      28.5292    28.87733
+          2  |    23.4814   .1714461   136.96   0.000     23.14528    23.81752
+          3  |    18.5859   .3220611    57.71   0.000     17.95451     19.2173
+          4  |   28.70649   .0887139   323.59   0.000     28.53256    28.88041
+          5  |   23.49361   .1695172   138.59   0.000     23.16128    23.82595
+          6  |   18.60654   .3199953    58.15   0.000      17.9792    19.23389
+          7  |   28.70971   .0886963   323.69   0.000     28.53582     28.8836
+          8  |   23.50582   .1675936   140.25   0.000     23.17726    23.83439
+          9  |   18.62718   .3179306    58.59   0.000     18.00388    19.25048
+         10  |   28.71293   .0887338   323.59   0.000     28.53897    28.88689
+         11  |   23.51804   .1656756   141.95   0.000     23.19323    23.84284
+         12  |   18.64782   .3158671    59.04   0.000     18.02857    19.26707
+         13  |   28.71616   .0888263   323.28   0.000     28.54202     28.8903
+         14  |   23.53025   .1637634   143.68   0.000     23.20919     23.8513
+         15  |   18.66846   .3138047    59.49   0.000     18.05325    19.28367
+         16  |   28.71938   .0889737   322.78   0.000     28.54495    28.89381
+         17  |   23.54246   .1618572   145.45   0.000     23.22514    23.85978
+         18  |    18.6891   .3117435    59.95   0.000     18.07793    19.30027
+         19  |   28.72261   .0891757   322.09   0.000     28.54778    28.89743
+         20  |   23.55467   .1599571   147.26   0.000     23.24108    23.86827
+         21  |   18.70974   .3096835    60.42   0.000     18.10261    19.31687
+         22  |   28.72583    .089432   321.20   0.000      28.5505    28.90116
+         23  |   23.56689   .1580635   149.10   0.000     23.25701    23.87677
+         24  |   18.73038   .3076248    60.89   0.000     18.12728    19.33347
+         25  |   28.72905   .0897419   320.13   0.000     28.55312    28.90499
+         26  |    23.5791   .1561766   150.98   0.000     23.27292    23.88528
+         27  |   18.75102   .3055674    61.36   0.000     18.15196    19.35008
+         28  |   28.73228   .0901051   318.88   0.000     28.55563    28.90893
+         29  |   23.59131   .1542965   152.90   0.000     23.28882    23.89381
+         30  |   18.77166   .3035113    61.85   0.000     18.17663    19.36668
+         31  |    28.7355   .0905208   317.45   0.000     28.55804    28.91296
+         32  |   23.60352   .1524236   154.85   0.000      23.3047    23.90235
+         33  |   18.79229   .3014564    62.34   0.000     18.20129    19.38329
+         34  |   28.73872   .0909884   315.85   0.000     28.56034    28.91711
+         35  |   23.61574   .1505581   156.85   0.000     23.32057     23.9109
+         36  |   18.81293    .299403    62.83   0.000     18.22596    19.39991
+         37  |   28.74195    .091507   314.10   0.000     28.56255    28.92135
+         38  |   23.62795   .1487003   158.90   0.000     23.33642    23.91947
+         39  |   18.83357   .2973509    63.34   0.000     18.25062    19.41652
+         40  |   28.74517   .0920758   312.19   0.000     28.56466    28.92568
+         41  |   23.64016   .1468504   160.98   0.000     23.35226    23.92806
+         42  |   18.85421   .2953002    63.85   0.000     18.27528    19.43314
+         43  |    28.7484   .0926938   310.14   0.000     28.56667    28.93012
+         44  |   23.65237   .1450089   163.11   0.000     23.36809    23.93666
+         45  |   18.87485    .293251    64.36   0.000     18.29994    19.44976
+         46  |   28.75162   .0933601   307.96   0.000     28.56859    28.93465
+         47  |   23.66458    .143176   165.28   0.000     23.38389    23.94528
+         48  |   18.89549   .2912032    64.89   0.000     18.32459    19.46639
+         49  |   28.75484   .0940737   305.66   0.000     28.57041    28.93927
+         50  |    23.6768   .1413521   167.50   0.000     23.39968    23.95392
+         51  |   18.91613   .2891569    65.42   0.000     18.34924    19.48302
+         52  |   28.75807   .0948335   303.25   0.000     28.57215    28.94399
+         53  |   23.68901   .1395374   169.77   0.000     23.41545    23.96257
+         54  |   18.93677   .2871121    65.96   0.000     18.37389    19.49965
+         55  |   28.76129   .0956383   300.73   0.000     28.57379    28.94879
+         56  |   23.70122   .1377324   172.08   0.000      23.4312    23.97124
+         57  |   18.95741    .285069    66.50   0.000     18.39853    19.51628
+         58  |   28.76451   .0964871   298.12   0.000     28.57535    28.95368
+         59  |   23.71343   .1359375   174.44   0.000     23.44693    23.97994
+         60  |   18.97805   .2830274    67.05   0.000     18.42318    19.53292
+         61  |   28.76774   .0973787   295.42   0.000     28.57683    28.95865
+         62  |   23.72565    .134153   176.86   0.000     23.46264    23.98865
+         63  |   18.99869   .2809874    67.61   0.000     18.44781    19.54956
+         64  |   28.77096    .098312   292.65   0.000     28.57822     28.9637
+         65  |   23.73786   .1323794   179.32   0.000     23.47833    23.99739
+         66  |   19.01932   .2789491    68.18   0.000     18.47245     19.5662
+         67  |   28.77419   .0992857   289.81   0.000     28.57954    28.96883
+         68  |   23.75007   .1306172   181.83   0.000       23.494    24.00614
+         69  |   19.03996   .2769125    68.76   0.000     18.49708    19.58285
+         70  |   28.77741   .1002987   286.92   0.000     28.58078    28.97404
+         71  |   23.76228   .1288667   184.39   0.000     23.50964    24.01492
+         72  |    19.0606   .2748777    69.34   0.000     18.52171     19.5995
+         73  |   28.78063   .1013498   283.97   0.000     28.58194    28.97933
+         74  |    23.7745   .1271285   187.01   0.000     23.52526    24.02373
+         75  |   19.08124   .2728446    69.93   0.000     18.54634    19.61615
+         76  |   28.78386   .1024379   280.99   0.000     28.58303    28.98469
+         77  |   23.78671   .1254031   189.68   0.000     23.54086    24.03256
+         78  |   19.10188   .2708134    70.54   0.000     18.57096    19.63281
+         79  |   28.78708   .1035617   277.97   0.000     28.58405    28.99011
+         80  |   23.79892    .123691   192.41   0.000     23.55643    24.04141
+         81  |   19.12252    .268784    71.14   0.000     18.59557    19.64947
+         82  |   28.79031   .1047202   274.93   0.000       28.585    28.99561
+         83  |   23.81113   .1219927   195.18   0.000     23.57197     24.0503
+         84  |   19.14316   .2667566    71.76   0.000     18.62019    19.66613
+         85  |   28.79353   .1059122   271.86   0.000     28.58589    29.00117
+         86  |   23.82335    .120309   198.02   0.000     23.58748    24.05921
+         87  |    19.1638    .264731    72.39   0.000      18.6448     19.6828
+         88  |   28.79675   .1071365   268.79   0.000     28.58671    29.00679
+         89  |   23.83556   .1186403   200.91   0.000     23.60297    24.06815
+         90  |   19.18444   .2627075    73.03   0.000      18.6694    19.69947
+         91  |   28.79998   .1083921   265.70   0.000     28.58748    29.01248
+         92  |   23.84777   .1169874   203.85   0.000     23.61842    24.07712
+         93  |   19.20508    .260686    73.67   0.000     18.69401    19.71615
+         94  |    28.8032   .1096779   262.62   0.000     28.58818    29.01822
+         95  |   23.85998   .1153509   206.85   0.000     23.63384    24.08613
+         96  |   19.22572   .2586666    74.33   0.000      18.7186    19.73283
+         97  |   28.80642   .1109928   259.53   0.000     28.58882    29.02402
+         98  |   23.87219   .1137315   209.90   0.000     23.64923    24.09516
+         99  |   19.24635   .2566494    74.99   0.000      18.7432    19.74951
+        100  |   28.80965   .1123359   256.46   0.000     28.58942    29.02988
+        101  |   23.88441   .1121299   213.01   0.000     23.66458    24.10424
+        102  |   19.26699   .2546343    75.67   0.000     18.76779     19.7662
+        103  |   28.81287   .1137061   253.40   0.000     28.58995    29.03579
+        104  |   23.89662    .110547   216.17   0.000     23.67989    24.11334
+        105  |   19.28763   .2526215    76.35   0.000     18.79237    19.78289
+        106  |    28.8161   .1151024   250.35   0.000     28.59044    29.04175
+        107  |   23.90883   .1089835   219.38   0.000     23.69517    24.12249
+        108  |   19.30827   .2506109    77.04   0.000     18.81695    19.79959
+        109  |   28.81932    .116524   247.33   0.000     28.59088    29.04776
+        110  |   23.92104   .1074404   222.64   0.000     23.71041    24.13168
+        111  |   19.32891   .2486027    77.75   0.000     18.84153    19.81629
+        112  |   28.82254   .1179699   244.32   0.000     28.59127    29.05382
+        113  |   23.93326   .1059184   225.96   0.000     23.72561    24.14091
+        114  |   19.34955    .246597    78.47   0.000      18.8661      19.833
+        115  |   28.82577   .1194392   241.34   0.000     28.59161    29.05993
+        116  |   23.94547   .1044185   229.32   0.000     23.74076    24.15018
+        117  |   19.37019   .2445937    79.19   0.000     18.89067    19.84971
+        118  |   28.82899    .120931   238.39   0.000     28.59191    29.06607
+        119  |   23.95768   .1029417   232.73   0.000     23.75587     24.1595
+        120  |   19.39083   .2425929    79.93   0.000     18.91523    19.86643
+        121  |   28.83221   .1224447   235.47   0.000     28.59216    29.07227
+        122  |   23.96989   .1014889   236.18   0.000     23.77093    24.16886
+        123  |   19.41147   .2405947    80.68   0.000     18.93979    19.88315
+        124  |   28.83544   .1239792   232.58   0.000     28.59238     29.0785
+        125  |   23.98211   .1000613   239.67   0.000     23.78594    24.17827
+        126  |   19.43211   .2385992    81.44   0.000     18.96434    19.89988
+        127  |   28.83866    .125534   229.73   0.000     28.59256    29.08477
+        128  |   23.99432   .0986599   243.20   0.000      23.8009    24.18774
+        129  |   19.45275   .2366064    82.22   0.000     18.98888    19.91661
+        130  |   28.84189   .1271082   226.91   0.000     28.59269    29.09108
+        131  |   24.00653   .0972859   246.76   0.000      23.8158    24.19726
+        132  |   19.47338   .2346163    83.00   0.000     19.01342    19.93335
+        133  |   28.84511   .1287011   224.12   0.000     28.59279    29.09743
+        134  |   24.01874   .0959404   250.35   0.000     23.83065    24.20683
+        135  |   19.49402   .2326292    83.80   0.000     19.03796    19.95009
+        136  |   28.84833    .130312   221.38   0.000     28.59286    29.10381
+        137  |   24.03096   .0946246   253.96   0.000     23.84545    24.21647
+        138  |   19.51466    .230645    84.61   0.000     19.06249    19.96684
+        139  |   28.85156   .1319404   218.67   0.000     28.59289    29.11022
+        140  |   24.04317   .0933399   257.59   0.000     23.86018    24.22616
+        141  |    19.5353   .2286638    85.43   0.000     19.08701    19.98359
+        142  |   28.85478   .1335855   216.00   0.000     28.59289    29.11667
+        143  |   24.05538   .0920874   261.22   0.000     23.87484    24.23592
+        144  |   19.55594   .2266857    86.27   0.000     19.11153    20.00035
+        145  |   28.85801   .1352467   213.37   0.000     28.59286    29.12315
+        146  |   24.06759   .0908686   264.86   0.000     23.88945    24.24574
+        147  |   19.57658   .2247108    87.12   0.000     19.13604    20.01712
+        148  |   28.86123   .1369235   210.78   0.000     28.59279    29.12967
+        149  |    24.0798   .0896848   268.49   0.000     23.90398    24.25563
+        150  |   19.59722   .2227391    87.98   0.000     19.16054     20.0339
+        151  |   28.86445   .1386152   208.23   0.000      28.5927    29.13621
+        152  |   24.09202   .0885374   272.11   0.000     23.91844    24.26559
+        153  |   19.61786   .2207708    88.86   0.000     19.18504    20.05068
+        154  |   28.86768   .1403214   205.73   0.000     28.59258    29.14277
+        155  |   24.10423   .0874279   275.70   0.000     23.93283    24.27563
+        156  |    19.6385   .2188059    89.75   0.000     19.20953    20.06746
+        157  |    28.8709   .1420415   203.26   0.000     28.59243    29.14937
+        158  |   24.11644   .0863577   279.26   0.000     23.94714    24.28574
+        159  |   19.65914   .2168446    90.66   0.000     19.23402    20.08426
+        160  |   28.87412    .143775   200.83   0.000     28.59226    29.15599
+        161  |   24.12865   .0853282   282.77   0.000     23.96137    24.29594
+        162  |   19.67978   .2148869    91.58   0.000     19.25849    20.10106
+        163  |   28.87735   .1455215   198.44   0.000     28.59206    29.16264
+        164  |   24.14087    .084341   286.23   0.000     23.97552    24.30622
+        165  |   19.70042   .2129329    92.52   0.000     19.28296    20.11787
+        166  |   28.88057   .1472804   196.09   0.000     28.59183    29.16931
+        167  |   24.15308   .0833976   289.61   0.000     23.98958    24.31658
+        168  |   19.72105   .2109827    93.47   0.000     19.30743    20.13468
+        169  |    28.8838   .1490514   193.78   0.000     28.59158    29.17601
+        170  |   24.16529   .0824995   292.91   0.000     24.00355    24.32703
+        171  |   19.74169   .2090365    94.44   0.000     19.33188    20.15151
+        172  |   28.88702    .150834   191.52   0.000     28.59131    29.18273
+        173  |    24.1775   .0816482   296.12   0.000     24.01743    24.33757
+        174  |   19.76233   .2070943    95.43   0.000     19.35633    20.16834
+        175  |   28.89024   .1526278   189.29   0.000     28.59102    29.18947
+        176  |   24.18972   .0808451   299.21   0.000     24.03122    24.34821
+        177  |   19.78297   .2051563    96.43   0.000     19.38077    20.18518
+        178  |   28.89347   .1544324   187.09   0.000     28.59071    29.19623
+        179  |   24.20193   .0800917   302.18   0.000     24.04491    24.35895
+        180  |   19.80361   .2032226    97.45   0.000      19.4052    20.20202
+        181  |   28.89669   .1562475   184.94   0.000     28.59037    29.20301
+        182  |   24.21414   .0793894   305.00   0.000      24.0585    24.36978
+        183  |   19.82425   .2012933    98.48   0.000     19.42962    20.21888
+        184  |   28.89991   .1580726   182.83   0.000     28.59002    29.20981
+        185  |   24.22635   .0787397   307.68   0.000     24.07199    24.38072
+        186  |   19.84489   .1993686    99.54   0.000     19.45403    20.23575
+        187  |   28.90314   .1599075   180.75   0.000     28.58964    29.21663
+        188  |   24.23857   .0781437   310.18   0.000     24.08537    24.39176
+        189  |   19.86553   .1974485   100.61   0.000     19.47843    20.25262
+        190  |   28.90636   .1617518   178.71   0.000     28.58925    29.22347
+        191  |   24.25078   .0776028   312.50   0.000     24.09864    24.40292
+        192  |   19.88617   .1955332   101.70   0.000     19.50283    20.26951
+        193  |   28.90959   .1636052   176.70   0.000     28.58884    29.23033
+        194  |   24.26299    .077118   314.62   0.000      24.1118    24.41418
+        195  |   19.90681   .1936228   102.81   0.000     19.52721     20.2864
+        196  |   28.91281   .1654674   174.73   0.000     28.58841    29.23721
+        197  |    24.2752   .0766905   316.53   0.000     24.12485    24.42555
+        198  |   19.92745   .1917176   103.94   0.000     19.55159     20.3033
+        199  |   28.91603    .167338   172.80   0.000     28.58797     29.2441
+        200  |   24.28741   .0763213   318.23   0.000     24.13779    24.43704
+        201  |   19.94808   .1898176   105.09   0.000     19.57595    20.32022
+        202  |   28.91926   .1692169   170.90   0.000     28.58751      29.251
+        203  |   24.29963   .0760111   319.69   0.000     24.15061    24.44865
+        204  |   19.96872    .187923   106.26   0.000      19.6003    20.33714
+        205  |   28.92248   .1711037   169.03   0.000     28.58704    29.25793
+        206  |   24.31184   .0757607   320.90   0.000     24.16331    24.46037
+        207  |   19.98936    .186034   107.45   0.000     19.62465    20.35408
+        208  |   28.92571   .1729981   167.20   0.000     28.58655    29.26487
+        209  |   24.32405   .0755707   321.87   0.000      24.1759    24.47221
+        210  |      20.01   .1841507   108.66   0.000     19.64898    20.37103
+        211  |   28.92893      .1749   165.40   0.000     28.58604    29.27182
+        212  |   24.33626   .0754415   322.58   0.000     24.18836    24.48417
+        213  |   20.03064   .1822734   109.89   0.000      19.6733    20.38798
+        214  |   28.93215   .1768091   163.63   0.000     28.58552    29.27878
+        215  |   24.34848   .0753735   323.04   0.000     24.20071    24.49624
+        216  |   20.05128   .1804022   111.15   0.000      19.6976    20.40496
+        217  |   28.93538   .1787252   161.90   0.000     28.58499    29.28576
+        218  |   24.36069   .0753668   323.23   0.000     24.21293    24.50844
+        219  |   20.07192   .1785373   112.42   0.000      19.7219    20.42194
+        220  |    28.9386   .1806479   160.19   0.000     28.58444    29.29276
+        221  |    24.3729   .0754215   323.16   0.000     24.22504    24.52076
+        222  |   20.09256   .1766788   113.72   0.000     19.74618    20.43893
+        223  |   28.94182   .1825772   158.52   0.000     28.58388    29.29976
+        224  |   24.38511   .0755374   322.82   0.000     24.23702     24.5332
+        225  |    20.1132   .1748271   115.05   0.000     19.77045    20.45594
+        226  |   28.94505   .1845129   156.87   0.000     28.58331    29.30678
+        227  |   24.39733   .0757142   322.23   0.000     24.24889    24.54576
+        228  |   20.13384   .1729823   116.39   0.000     19.79471    20.47296
+        229  |   28.94827   .1864546   155.26   0.000     28.58273    29.31381
+        230  |   24.40954   .0759515   321.38   0.000     24.26064    24.55844
+        231  |   20.15448   .1711447   117.76   0.000     19.81895       20.49
+        232  |    28.9515   .1884023   153.67   0.000     28.58214    29.32086
+        233  |   24.42175   .0762487   320.29   0.000     24.27227    24.57123
+        234  |   20.17511   .1693144   119.16   0.000     19.84318    20.50705
+        235  |   28.95472   .1903557   152.11   0.000     28.58153    29.32791
+        236  |   24.43396   .0766052   318.96   0.000     24.28378    24.58415
+        237  |   20.19575   .1674918   120.58   0.000     19.86739    20.52412
+        238  |   28.95794   .1923147   150.58   0.000     28.58091    29.33497
+        239  |   24.44618   .0770201   317.40   0.000     24.29518    24.59717
+        240  |   20.21639   .1656771   122.02   0.000     19.89159     20.5412
+        241  |   28.96117   .1942791   149.07   0.000     28.58029    29.34205
+        242  |   24.45839   .0774925   315.62   0.000     24.30647    24.61031
+        243  |   20.23703   .1638704   123.49   0.000     19.91577     20.5583
+        244  |   28.96439   .1962488   147.59   0.000     28.57965    29.34913
+        245  |    24.4706   .0780213   313.64   0.000     24.31764    24.62356
+        246  |   20.25767   .1620722   124.99   0.000     19.93993    20.57541
+        247  |   28.96761   .1982235   146.14   0.000       28.579    29.35623
+        248  |   24.48281   .0786054   311.46   0.000     24.32871    24.63692
+        249  |   20.27831   .1602827   126.52   0.000     19.96408    20.59254
+        250  |   28.97084   .2002032   144.71   0.000     28.57834    29.36333
+        251  |   24.49502   .0792436   309.11   0.000     24.33967    24.65038
+        252  |   20.29895   .1585022   128.07   0.000     19.98821    20.60969
+        253  |   28.97406   .2021877   143.30   0.000     28.57768    29.37045
+        254  |   24.50724   .0799345   306.59   0.000     24.35053    24.66395
+        255  |   20.31959   .1567309   129.65   0.000     20.01232    20.62686
+        256  |   28.97729   .2041768   141.92   0.000       28.577    29.37757
+        257  |   24.51945   .0806769   303.92   0.000     24.36128    24.67761
+        258  |   20.34023   .1549693   131.25   0.000     20.03641    20.64404
+        259  |   28.98051   .2061705   140.57   0.000     28.57632     29.3847
+        260  |   24.53166   .0814693   301.12   0.000     24.37194    24.69138
+        261  |   20.36087   .1532176   132.89   0.000     20.06049    20.66125
+        262  |   28.98373   .2081685   139.23   0.000     28.57562    29.39184
+        263  |   24.54387   .0823103   298.19   0.000     24.38251    24.70524
+        264  |   20.38151   .1514762   134.55   0.000     20.08454    20.67847
+        265  |   28.98696   .2101708   137.92   0.000     28.57492    29.39899
+        266  |   24.55609   .0831983   295.15   0.000     24.39298     24.7192
+        267  |   20.40214   .1497454   136.25   0.000     20.10857    20.69572
+        268  |   28.99018   .2121772   136.63   0.000     28.57421    29.40615
+        269  |    24.5683    .084132   292.02   0.000     24.40336    24.73324
+        270  |   20.42278   .1480257   137.97   0.000     20.13258    20.71299
+        271  |   28.99341   .2141877   135.36   0.000     28.57349    29.41332
+        272  |   24.58051   .0851098   288.81   0.000     24.41365    24.74737
+        273  |   20.44342   .1463174   139.72   0.000     20.15657    20.73028
+        274  |   28.99663   .2162021   134.12   0.000     28.57277    29.42049
+        275  |   24.59272   .0861302   285.53   0.000     24.42387    24.76158
+        276  |   20.46406   .1446208   141.50   0.000     20.18054    20.74759
+        277  |   28.99985   .2182203   132.89   0.000     28.57204    29.42767
+        278  |   24.60494   .0871916   282.19   0.000       24.434    24.77587
+        279  |    20.4847   .1429366   143.31   0.000     20.20448    20.76493
+        280  |   29.00308   .2202422   131.69   0.000      28.5713    29.43486
+        281  |   24.61715   .0882928   278.81   0.000     24.44405    24.79024
+        282  |   20.50534   .1412649   145.16   0.000     20.22839    20.78229
+        283  |    29.0063   .2222676   130.50   0.000     28.57055    29.44205
+        284  |   24.62936    .089432   275.40   0.000     24.45403    24.80469
+        285  |   20.52598   .1396065   147.03   0.000     20.25228    20.79968
+        286  |   29.00952   .2242966   129.34   0.000     28.56979    29.44925
+        287  |   24.64157    .090608   271.96   0.000     24.46394    24.81921
+        288  |   20.54662   .1379616   148.93   0.000     20.27615    20.81709
+        289  |   29.01275    .226329   128.19   0.000     28.56903    29.45646
+        290  |   24.65379   .0918194   268.50   0.000     24.47377     24.8338
+        291  |   20.56726   .1363308   150.86   0.000     20.29998    20.83453
+        292  |   29.01597   .2283647   127.06   0.000     28.56827    29.46368
+        293  |     24.666   .0930646   265.04   0.000     24.48355    24.84845
+        294  |    20.5879   .1347146   152.83   0.000     20.32379      20.852
+        295  |    29.0192   .2304037   125.95   0.000     28.56749     29.4709
+        296  |   24.67821   .0943424   261.58   0.000     24.49325    24.86317
+        297  |   20.60854   .1331135   154.82   0.000     20.34757     20.8695
+        298  |   29.02242   .2324458   124.86   0.000     28.56671    29.47813
+        299  |   24.69042   .0956516   258.13   0.000      24.5029    24.87795
+        300  |   20.62917   .1315281   156.84   0.000     20.37132    20.88703
+        301  |   29.02564   .2344909   123.78   0.000     28.56593    29.48536
+        302  |   24.70263   .0969907   254.69   0.000     24.51249    24.89278
+        303  |   20.64981    .129959   158.89   0.000     20.39503     20.9046
+        304  |   29.02887    .236539   122.72   0.000     28.56514     29.4926
+        305  |   24.71485   .0983586   251.27   0.000     24.52202    24.90768
+        306  |   20.67045   .1284068   160.98   0.000     20.41871    20.92219
+        307  |   29.03209   .2385901   121.68   0.000     28.56434    29.49984
+        308  |   24.72706   .0997541   247.88   0.000     24.53149    24.92263
+        309  |   20.69109    .126872   163.09   0.000     20.44236    20.93982
+        310  |   29.03531    .240644   120.66   0.000     28.56354    29.50709
+        311  |   24.73927   .1011761   244.52   0.000     24.54092    24.93763
+        312  |   20.71173   .1253554   165.22   0.000     20.46597    20.95749
+        313  |   29.03854   .2427006   119.65   0.000     28.56273    29.51435
+        314  |   24.75148   .1026235   241.19   0.000     24.55029    24.95268
+        315  |   20.73237   .1238575   167.39   0.000     20.48955    20.97519
+        316  |   29.04176   .2447599   118.65   0.000     28.56192    29.52161
+        317  |    24.7637   .1040952   237.89   0.000     24.55962    24.96777
+        318  |   20.75301   .1223791   169.58   0.000     20.51309    20.99293
+        319  |   29.04499   .2468218   117.68   0.000      28.5611    29.52888
+        320  |   24.77591   .1055901   234.64   0.000      24.5689    24.98292
+        321  |   20.77365   .1209209   171.80   0.000     20.53659    21.01071
+        322  |   29.04821   .2488863   116.71   0.000     28.56027    29.53615
+        323  |   24.78812   .1071074   231.43   0.000     24.57814     24.9981
+        324  |   20.79429   .1194836   174.03   0.000     20.56004    21.02853
+        325  |   29.05143   .2509533   115.76   0.000     28.55944    29.54342
+        326  |   24.80033    .108646   228.27   0.000     24.58733    25.01333
+        327  |   20.81493    .118068   176.30   0.000     20.58346     21.0464
+        328  |   29.05466   .2530228   114.83   0.000     28.55861     29.5507
+        329  |   24.81255   .1102052   225.15   0.000     24.59649     25.0286
+        330  |   20.83557   .1166749   178.58   0.000     20.60683     21.0643
+        331  |   29.05788   .2550946   113.91   0.000     28.55777    29.55799
+        332  |   24.82476   .1117839   222.08   0.000     24.60561    25.04391
+        333  |    20.8562   .1153051   180.88   0.000     20.63015    21.08226
+        334  |   29.06111   .2571687   113.00   0.000     28.55693    29.56528
+        335  |   24.83697   .1133815   219.06   0.000     24.61469    25.05925
+        336  |   20.87684   .1139594   183.20   0.000     20.65343    21.10026
+        337  |   29.06433   .2592451   112.11   0.000     28.55608    29.57257
+        338  |   24.84918   .1149971   216.09   0.000     24.62373    25.07463
+        339  |   20.89748   .1126387   185.53   0.000     20.67666    21.11831
+        340  |   29.06755   .2613236   111.23   0.000     28.55523    29.57987
+        341  |    24.8614   .1166299   213.16   0.000     24.63274    25.09005
+        342  |   20.91812   .1113439   187.87   0.000     20.69983    21.13641
+        343  |   29.07078   .2634044   110.37   0.000     28.55438    29.58718
+        344  |   24.87361   .1182793   210.30   0.000     24.64172    25.10549
+        345  |   20.93876    .110076   190.22   0.000     20.72296    21.15456
+        346  |     29.074   .2654872   109.51   0.000     28.55352    29.59448
+        347  |   24.88582   .1199446   207.48   0.000     24.65067    25.12097
+        348  |    20.9594   .1088357   192.58   0.000     20.74603    21.17277
+        349  |   29.07722   .2675721   108.67   0.000     28.55265    29.60179
+        350  |   24.89803   .1216252   204.71   0.000     24.65959    25.13648
+        351  |   20.98004   .1076242   194.94   0.000     20.76904    21.19103
+        352  |   29.08045    .269659   107.84   0.000     28.55179    29.60911
+        353  |   24.91024   .1233203   202.00   0.000     24.66848    25.15201
+        354  |   21.00068   .1064423   197.30   0.000       20.792    21.20936
+        355  |   29.08367   .2717479   107.02   0.000     28.55092    29.61643
+        356  |   24.92246   .1250294   199.33   0.000     24.67734    25.16757
+        357  |   21.02132   .1052912   199.65   0.000      20.8149    21.22774
+        358  |    29.0869   .2738387   106.22   0.000     28.55004    29.62375
+        359  |   24.93467    .126752   196.72   0.000     24.68617    25.18316
+        360  |   21.04196   .1041717   201.99   0.000     20.83773    21.24618
+        361  |   29.09012   .2759313   105.43   0.000     28.54916    29.63108
+        362  |   24.94688   .1284874   194.16   0.000     24.69498    25.19878
+        363  |    21.0626   .1030849   204.32   0.000      20.8605    21.26469
+        364  |   29.09334   .2780258   104.64   0.000     28.54828    29.63841
+        365  |   24.95909   .1302353   191.65   0.000     24.70377    25.21442
+        366  |   21.08323    .102032   206.63   0.000      20.8832    21.28327
+        367  |   29.09657   .2801221   103.87   0.000     28.54739    29.64574
+        368  |   24.97131    .131995   189.18   0.000     24.71253    25.23008
+        369  |   21.10387   .1010138   208.92   0.000     20.90584    21.30191
+        370  |   29.09979   .2822201   103.11   0.000      28.5465    29.65308
+        371  |   24.98352   .1337662   186.77   0.000     24.72127    25.24576
+        372  |   21.12451   .1000316   211.18   0.000      20.9284    21.32062
+        373  |   29.10302   .2843199   102.36   0.000     28.54561    29.66042
+        374  |   24.99573   .1355483   184.40   0.000     24.72999    25.26147
+        375  |   21.14515   .0990863   213.40   0.000      20.9509    21.33941
+        376  |   29.10624   .2864213   101.62   0.000     28.54472    29.66776
+        377  |   25.00794    .137341   182.09   0.000     24.73869     25.2772
+        378  |   21.16579    .098179   215.58   0.000     20.97331    21.35827
+        379  |   29.10946   .2885243   100.89   0.000     28.54382    29.67511
+        380  |   25.02016   .1391439   179.82   0.000     24.74737    25.29294
+        381  |   21.18643   .0973109   217.72   0.000     20.99565    21.37721
+        382  |   29.11269    .290629   100.17   0.000     28.54291    29.68246
+        383  |   25.03237   .1409564   177.59   0.000     24.75603    25.30871
+        384  |   21.20707   .0964829   219.80   0.000     21.01792    21.39622
+        385  |   29.11591   .2927352    99.46   0.000     28.54201    29.68981
+        386  |   25.04458   .1427784   175.41   0.000     24.76467    25.32449
+        387  |   21.22771    .095696   221.82   0.000      21.0401    21.41532
+        388  |   29.11913    .294843    98.76   0.000      28.5411    29.69717
+        389  |   25.05679   .1446094   173.27   0.000     24.77329     25.3403
+        390  |   21.24835   .0949514   223.78   0.000      21.0622     21.4345
+        391  |   29.12236   .2969522    98.07   0.000     28.54019    29.70453
+        392  |   25.06901   .1464491   171.18   0.000     24.78189    25.35612
+        393  |   21.26899     .09425   225.67   0.000     21.08421    21.45376
+        394  |   29.12558   .2990629    97.39   0.000     28.53927    29.71189
+        395  |   25.08122   .1482971   169.13   0.000     24.79048    25.37195
+        396  |   21.28963   .0935929   227.47   0.000     21.10614    21.47311
+        397  |   29.12881   .3011751    96.72   0.000     28.53836    29.71925
+        398  |   25.09343   .1501532   167.12   0.000     24.79906     25.3878
+        399  |   21.31026   .0929808   229.19   0.000     21.12798    21.49255
+------------------------------------------------------------------------------
+```
